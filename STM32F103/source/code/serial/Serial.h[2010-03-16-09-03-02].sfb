@@ -1,0 +1,30 @@
+#ifndef SERIAL_FILE_H_
+#define SERIAL_FILE_H_
+
+
+#define COMNUM 2
+/**
+ * 这里SERI0为连接PC，SERI1为连接终端
+ */
+#define SERI0 0
+#define SERI1 1
+//定义缓冲区大小
+#define COMLENGTH 0xfc
+
+extern uchar logEnable;
+extern volatile uchar Serial_Tail[COMNUM] ;
+//串口缓冲区队长变量
+extern volatile uchar Serial_Count[COMNUM];
+//串口缓冲区大小
+extern volatile uchar Serial_Buffer[COMNUM][COMLENGTH];
+
+extern void SeriPushSend(uchar index,uchar c);
+extern void PushSend_String(uchar index,uchar * str);
+extern void Serial_BufCls(uchar index);
+extern unsigned char SeriPopRece(uchar index,uchar * c);
+
+extern void Log_PushSend_String(uchar index, uchar * str);
+extern void Log_SeriPushSend(uchar index, uchar c);
+
+#endif
+

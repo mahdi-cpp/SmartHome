@@ -1,0 +1,879 @@
+#include "config.h"
+/////////////////////////////////////////////////////////////
+//外设协议基本格式:
+//包头 + 设备类型 + 包类型 + 包长度 + 数据内容 + 较验 + 包尾
+//整个协议总长度为256,包头,包尾,设备类型,包类型,包长度均为一
+//字节字段,所以此协议最多能传输内容长度为249个字节的数据包.
+//包头与包尾均为0x21,即"!"号
+//较验为两个字节,负责较验从设备类型到较验字节前的内容,较验方
+//式为检验和
+//设备类型为二进制
+//EX_DEVICE_AD      0x31
+//EX_DEVICE_LCD     0x32
+//EX_DEVICE_SCAN    0x33
+//EX_DEVICE_PRINTER 0x34
+
+//转义处理:
+//从设备类型开始,直到数据内容结束,都有可能出现与协议头/尾相同的字符
+//当出现此字符时,需要进行转义处理,方法如下:
+//1.当数据包长度或数据内容中出现0x21时,则先在些字符之前插入一个将其
+//  与0x3D进行异或(0x1C)的值,即当出现0x21时,实际传输字符为两个字节:
+//   0x3D 0x1C
+//2.当数据包长度或数据内容中出现0x3D时,则在0x3D之后插入一个0x00,即实
+//  际传输字符为两个字节:0x3D 0x00
+//3.数据接收者当收到0x3D时,即将此字节扔掉,且将其后一个字节与0x3D进行
+//  异或.
+//4.转义不增加数据包长度.
+//5.较验是指对转义之后的数据包进行较验,较验位也有可能需要进行转义
+
+
+/**
+ * 	The volatile of Serial
+ */
+uchar bStart[COMNUM] = { 0x00, 0x00 };
+uchar bGet3D[COMNUM] = { 0x00, 0x00 };
+uchar Pos[COMNUM] = { 0x00, 0x00 };
+uchar RData_Buffer[COMNUM][COMLENGTH] = { { 0x00, 0x00, 0x00, 0x00, 0x00, }, {
+		0x00 } };
+uchar WData_Buffer[COMNUM][COMLENGTH] = { { 0x00 }, { 0x00 } };
+
+/**
+ * The volatile of Configure and result
+ */
+uchar terminalID[TERMINALIDLENGTH] = { 0x00 };
+
+uchar terminalVersion[TERMINALVERSIONLENGTH] = { 0x00 };
+/**
+ * 第一个字节为高电平配置；第二个字节为低电平配置；第三个字节为输入检测（终端控制输出）；第四个字节为DA配置；第五个字节为脉冲配置。
+ */
+uchar testingConfig[TESTINGCONFIGLENGTH] = { 0x00 };
+
+/**
+ 第一个字节测试控制：0x01、0x02、0x03
+ 第二个字节为正触发状态：01
+ 第三个字节为负触发状态：02
+ 第四个字节为控制输出状态：03
+ AD检测结果：00000001
+ 脉冲检测结果（每个脉冲2个字节，4路）：0001000000000000
+ 预留：00000000
+ */
+uchar testingResult[TESTINGRESULTLENGTH] = { 0x00 };
+
+/**
+ * 是否已经配置标志位。0x00还没有进行IO口的配置。
+ */
+uchar PC_HandShakeFlag = 0x00;
+uchar configFlag = 0x00;
+uchar startFlag = 0x00;
+uchar testingToolWaiting = 0x00;
+//如果进入测试模式为0x01
+uchar terminalState = 0x00;
+
+/**
+ * Pulse 使能  四路。
+ */
+uchar pulseEnable = 0x00;
+
+/**
+ *
+ 7V的正触发端口->
+ 5V的正触发端口>负触发端口->控制输出->AD->脉冲
+ 0V的正触发端口>负触发端口->控制输出->AD
+ */
+uchar config_high = 0x00;
+uchar config_low = 0x00;
+uchar config_control = 0x00;
+uchar config_AD = 0x00;
+uchar config_pulse = 0x00;
+uchar V7_flag = 0x00;
+uchar V7_high = 0x00;
+uchar V5_flag = 0x00;
+uchar V5_high = 0x00;
+uchar V5_low = 0x00;
+uchar V5_control = 0x00;
+uchar V5_AD = 0x00;
+uchar V5_pulse = 0x00;
+uchar V0_flag = 0x00;
+uchar V0_high = 0x00;
+uchar V0_low = 0x00;
+uchar V0_control = 0x00;
+uchar V0_AD = 0x00;
+//发送状态，第一个字节表示电压控制，第二个字节表示种类，第三个字节表示相应的序号。
+uchar sendRequestState[3] = { 0x00, 0x00, 0x00 };
+
+/*******************************************************
+ 发送一个可能会存在转义机会的字符串,返回值为转义后应该增
+ 加的较验值
+ *******************************************************/
+uchar SendTransChar(uchar index, uchar c) {
+	if (c == 0x3D) {
+		SeriPushSend(index, 0x3D);
+		SeriPushSend(index, 0x00);
+		return 0x3D;
+	} else if (c == 0x21) {
+		SeriPushSend(index, 0x3D);
+		SeriPushSend(index, 0x1C);
+		return 0x21;
+	} else {
+		SeriPushSend(index, c);
+		return c;
+	}
+}
+
+/**
+ * @Title:
+ * @Description: Send acknowledge
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-20
+ */
+void SendAck(uchar index, uchar ack_code) {
+	Log_PushSend_String(index, "ACK:");
+	uint CheckSum = 0x0001 + TESTTOOL_DEVICE_TYPE_ID + ACK_PACKAGE_TYPE_ID;
+	//包头
+	SeriPushSend(index, 0x21);
+	//设备类型
+	SeriPushSend(index, TESTTOOL_DEVICE_TYPE_ID);
+	//包类型
+	SeriPushSend(index, ACK_PACKAGE_TYPE_ID);
+	//包长度
+	SeriPushSend(index, 0x01);
+	//发送数据内容
+	CheckSum += SendTransChar(index, ack_code);
+	SendTransChar(index, (uchar) (CheckSum >> 8));
+	SendTransChar(index, (uchar) (CheckSum));
+	SeriPushSend(index, 0x21);
+}
+
+/**
+ * Terminal receive the wrong acknowledge.
+ */
+void AckReceiveProcess(uchar index) {
+	if (RData_Buffer[index][COMMANDINDEX] == ACK_CODE_CHECKSUM_ERROR) {
+		//如果终端发给测试架Acknowledge=error, 则测试架回复PC一条指令ID为0XEE。
+		if (index == SERI1) {
+			OUTPUT_DEBUG("ACKError",8);
+			Log_PushSend_String(index, "ACKError:");
+
+			WData_Buffer[index][0] = 0xEE;
+			SendData(SERI0, WData_Buffer[index], 1);
+		} else {
+			//Todo
+			;
+		}
+	}
+}
+
+/**
+ * @Title:
+ * @Description: Send data; Be careful of the length of String
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-20
+ */
+void SendData(uchar index, uchar * str, uchar ilen) {
+	OUTPUT_DEBUG("SendData",8);
+	uchar i, c;
+	uint CheckSum = ilen + TESTTOOL_DEVICE_TYPE_ID + TESTTOOL_PACKAGE_TYPE_ID;
+
+	//	Log_PushSend_String(index, "SendData:");
+
+	//包头
+	SeriPushSend(index, 0x21);
+	//设备类型
+	SeriPushSend(index, TESTTOOL_DEVICE_TYPE_ID);
+	//包类型
+	SeriPushSend(index, TESTTOOL_PACKAGE_TYPE_ID);
+	//包长度
+	SeriPushSend(index, ilen);
+	//发送数据内容
+	for (i = 0; i < ilen; ++i) {
+		c = *(str++);
+		CheckSum += SendTransChar(index, c);
+	}
+	SendTransChar(index, (uchar) (CheckSum >> 8));
+	SendTransChar(index, (uchar) (CheckSum));
+	SeriPushSend(index, 0x21);
+}
+
+
+/**
+ * @Title:
+ * @Description: 发送状态
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-20
+ */
+void SendCurState() {
+	OUTPUT_DEBUG("SendData",8);
+	uchar ilen=2;
+	uint CheckSum = ilen + TESTTOOL_DEVICE_TYPE_ID + TESTTOOL_PACKAGE_TYPE_ID;
+
+	//	Log_PushSend_String(index, "SendData:");
+
+	//包头
+	SeriPushSend(SERI0, 0x21);
+	//设备类型
+	SeriPushSend(SERI0, TESTTOOL_DEVICE_TYPE_ID);
+	//包类型
+	SeriPushSend(SERI0, TESTTOOL_PACKAGE_TYPE_ID);
+	//包长度
+	SeriPushSend(SERI0, ilen);
+	//发送数据内容
+	CheckSum += SendTransChar(SERI0, TESTINGTOOLSTATE);
+	CheckSum += SendTransChar(SERI0, PIN_TestingState);
+
+	SendTransChar(SERI0, (uchar) (CheckSum >> 8));
+	SendTransChar(SERI0, (uchar) (CheckSum));
+	SeriPushSend(SERI0, 0x21);
+}
+
+
+
+/**
+ * @Title:
+ * @Description: 把从终端的数据直接透传给PC
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-20
+ */
+void SendTransparentData(uchar index) {
+	Log_PushSend_String(index, "SendTransparent");
+	uchar i;
+	uchar dataIndex;
+	if (index == 0) {
+		dataIndex = 1;
+	} else {
+		dataIndex = 0;
+	}
+	SeriPushSend(dataIndex, 0x21);
+	/**
+	 *设备号+包类型+数据长度+数据内容+校验码
+	 */
+	for (i = 0; i < RData_Buffer[index][3] + 5; ++i) {
+		SendTransChar(dataIndex, RData_Buffer[index][i + 1]);
+	}
+	SeriPushSend(dataIndex, 0x21);
+}
+
+//void SendAck2Center(void) {
+//	uint CheckSum = 0x00;
+//	//包头
+//	SeriPushSend(index,0x21);
+//	//设备类型
+//	SeriPushSend(index,DEVICE_TYPE_ID);
+//	//包类型-透传包
+//	SeriPushSend(index,0x02);
+//	//包长度
+//	SeriPushSend(index,0x04);
+//	//发送数据内容
+//	SeriPushSend(index,0x01); //类型
+//	SeriPushSend(index,0x02); //长度
+//	SendTransChar(index,ModifyA); //A
+//	SendTransChar(index,ModifyB); //B
+//	CheckSum = 0x002A + DEVICE_TYPE_ID + ModifyA + ModifyB;
+//	SendTransChar(index,(uchar) (CheckSum >> 8));
+//	SendTransChar(index,(uchar) (CheckSum));
+//	SeriPushSend(index,0x21);
+//}
+
+
+/**
+ * @Title:
+ * @Description: Process the data
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-20
+ */
+void DoSomething(uchar index) {
+	uint CheckSum = 0x0000, itemp;
+	uchar i, ilen;
+
+	ilen = RData_Buffer[index][3];
+	for (i = 1; i < ilen + 4; i++)
+		CheckSum += RData_Buffer[index][i];
+	itemp = (uint) (RData_Buffer[index][ilen + 4] << 8);
+	itemp += (uint) (RData_Buffer[index][ilen + 5]);
+
+	//uchar * String1 = "1245";
+	//	utoa(CheckSum, String1, 16);
+	//	Log_PushSend_String(0, "Check");
+	//	Log_PushSend_String(0, String1);
+
+	if (itemp == CheckSum) {
+		SendAck(index, ACK_CODE_OK);
+		//较验通过,下面检测包类型,针对不同的包类型,进行不同的处理
+		switch (RData_Buffer[index][2]) {
+		case TRANSPARENTTRANSMISSION_PACKAGE_PC: //中心发过来的透传包
+			SendTransparentData(index);
+			break;
+		case TRANSPARENTTRANSMISSION_PACKAGE_TERMINAL: //中心发过来的透传包
+			SendTransparentData(index);
+			break;
+		case TESTTOOL_PACKAGE_TYPE_ID:
+			SeriRDataProcess(index);
+			//			switch (index) {
+			//			case SERI0:
+			//				Seri0RDataProcess(SERI0);
+			//				break;
+			//			case SERI1:
+			//				Seri1RDataProcess(SERI1);
+			//				break;
+			//			default:
+			//				break;
+			//			}
+			break;
+		case ACK_PACKAGE_TYPE_ID:
+			AckReceiveProcess(index);
+			break;
+		default:
+			break;
+		}
+	} else {
+		SendAck(index, ACK_CODE_CHECKSUM_ERROR);
+	}
+}
+
+/**
+ * @Title:
+ * @Description: Get the data from the serial
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-20
+ */
+void ProcessProtocol(uchar index) {
+	uchar c;
+	if (SeriPopRece(index, &c)) {
+		if (bStart[index]) {
+			if (c != 0x3D) {
+				if (bGet3D[index]) {
+					if (c == 0x00)
+						RData_Buffer[index][Pos[index]++] = 0x3D;
+					else if (c == 0x1C)
+						RData_Buffer[index][Pos[index]++] = 0x21;
+					bGet3D[index] = false;
+				} else
+					RData_Buffer[index][Pos[index]++] = c;
+			} else
+				bGet3D[index] = true;
+		}
+		if (c == 0x21) {
+			bGet3D[index] = false;
+			if (bStart[index]) {
+				DoSomething(index);
+				Pos[index] = 0x00;
+				bStart[index] = false;
+			} else {
+				Pos[index] = 0x01;
+				bStart[index] = true;
+				RData_Buffer[index][0] = 0x21;
+			}
+		}
+	}
+}
+//21 10 81 0E 03 00 00 00 00 00 00 00 00 00 00 11 11 11 00 D5 21
+/**
+ * @Title:
+ * @Description: 发送终端握手
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-9-7
+ */
+void TTSendTerminalHandShaking(void) {
+	OUTPUT_DEBUG("TTSHake",7);
+	Log_PushSend_String(1, "TTShake");
+	uchar i;
+	//	WData_Buffer[SERI0][0] = 0x03;
+	//	for (i = 0; i < TERMINALIDLENGTH; ++i) {
+	//		WData_Buffer[SERI0][i + 1] = 0;
+	//	}
+	//	for (i = 0; i < TERMINALVERSIONLENGTH; ++i) {
+	//		WData_Buffer[SERI0][i + 1 + TERMINALIDLENGTH] = 0X11;
+	//	}
+	//	SendData(SERI1, WData_Buffer[SERI0], 1 + TERMINALIDLENGTH
+	//			+ TERMINALVERSIONLENGTH);
+
+	WData_Buffer[SERI1][0] = 0x03;
+	for (i = 0; i < TERMINALIDLENGTH; ++i) {
+		WData_Buffer[SERI1][i + 1] = 0;
+	}
+	for (i = 0; i < TERMINALVERSIONLENGTH; ++i) {
+		WData_Buffer[SERI1][i + 1 + TERMINALIDLENGTH] = 0X11;
+	}
+	SendData(SERI1, WData_Buffer[SERI1], 1 + TERMINALIDLENGTH
+			+ TERMINALVERSIONLENGTH);
+}
+
+/**
+ * @Title:
+ * @Description: 清除结果数列
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-9-7
+ */
+void ClearResultArray(void) {
+	uchar i;
+	for (i = 0; i < TESTINGRESULTLENGTH; ++i) {
+		testingResult[i] = 0x00;
+	}
+}
+
+/**
+ * 把测试结果发给PC,并清空结果数组
+ */
+void SendResult(uchar voltage) {
+	OUTPUT_DEBUG("Result",6);
+	uchar i;
+	WData_Buffer[SERI0][0] = PCTESTINGRESULT;
+
+	//将当次不需要测量的置1
+	if (voltage == V7_CONTROL) {
+		for (i = 0; i < config_low; ++i) {
+			SBIT(testingResult[LOW_STYLE],i);
+		}
+		for (i = 0; i < config_control; ++i) {
+			SBIT(testingResult[CONTROL_STYLE],i);
+		}
+	}
+
+	for (i = 0; i < TERMINALIDLENGTH; ++i) {
+		WData_Buffer[SERI0][i + 1] = terminalID[i];
+	}
+	for (i = 0; i < TERMINALVERSIONLENGTH; ++i) {
+		WData_Buffer[SERI0][i + 1 + TERMINALIDLENGTH] = terminalVersion[i];
+	}
+
+	for (i = 0; i < TESTINGRESULTLENGTH; ++i) {
+		WData_Buffer[SERI0][i + TERMINALIDLENGTH + TERMINALVERSIONLENGTH + 1]
+				= testingResult[i];
+	}
+
+	Log_PushSend_String(0, "Result");
+
+	SendData(SERI0, WData_Buffer[SERI0], 1 + TERMINALIDLENGTH
+			+ TERMINALVERSIONLENGTH + TESTINGRESULTLENGTH);
+
+	//清空结果数组
+	ClearResultArray();
+}
+
+/**
+ * 保持发送请求的状态
+ */
+void SaveSendRequestState(uchar voltage, uchar style, uchar ID) {
+	sendRequestState[0] = voltage;
+	sendRequestState[1] = style;
+	sendRequestState[2] = ID;
+}
+
+/**
+ * 发送测试请求
+ */
+void SendRequest(uchar voltage, uchar style, uchar ID) {
+	uchar i;
+	OUTPUT_DEBUG("Request",7);
+
+	WData_Buffer[SERI1][0] = TERMINALTESTING;
+	WData_Buffer[SERI1][1] = voltage;
+	//先全部清空   1+1+5+4
+	for (i = 0; i < REQUEST_DATA_LENGTH - 2; ++i) {
+		WData_Buffer[SERI1][i + 2] = 0x00;
+	}
+	//置其中一位为一
+	WData_Buffer[SERI1][1 + style] = ID;
+	SaveSendRequestState(voltage, style, ID);
+
+	Log_PushSend_String(1, "Req2");
+
+	SendData(SERI1, WData_Buffer[SERI1], 1 + REQUEST_DATA_LENGTH);
+}
+
+/**
+ * @Title:
+ * @Description: 读管脚的状态
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-9-7
+ */
+void ReadPinState() {
+	uchar state = 0;
+	switch (sendRequestState[2]) {
+	case 0x01:
+		state = K_PIN_0();
+		break;
+	case 0x02:
+		state = K_PIN_1();
+		break;
+	case 0x03:
+		state = K_PIN_2();
+		break;
+	case 0x04:
+		state = K_PIN_3();
+		break;
+	case 0x05:
+		state = K_PIN_4();
+		break;
+	case 0x06:
+		state = K_PIN_5();
+		break;
+	case 0x07:
+		state = K_PIN_6();
+		break;
+	case 0x08:
+		state = K_PIN_7();
+		break;
+	default:
+		break;
+	}
+	//	PushSend_String(0,"Pin");
+	//	SeriPushSend(0,sendRequestState[2]);
+	//	SeriPushSend(0,PINA);
+	//	SeriPushSend(0,state);
+
+	//如果检查无误，把相应的位置1
+	if ((sendRequestState[0] - 1) != state) {
+		SBIT(testingResult[1 + HIGH_RESULT_LENGTH + LOW_RESULT_LENGTH],sendRequestState[2]-1);
+	}
+	//	delay_nms(1000);
+}
+
+/*
+ * @Title:
+ * @Description: 处理如何发送
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-9-7
+ */
+void TestingProcess(void) {
+	uchar flag = 0x00;
+	//	if (V5_pulse==0) {
+	//		Log_PushSend_String(1,"W:");
+	//		Log_SeriPushSend(1,testingToolWaiting);
+	//	}
+	//	if (testingToolWaiting == 0) {
+	if (testingToolWaiting == 0 && TIMER3_FLAG == 0) {
+		Log_PushSend_String(1, "Req1");
+		//如果测试完成，则发送退出命令给PC
+		if (V7_flag == 0 && V5_flag == 0 && V0_flag == 0 && terminalState
+				== 0x01) {
+			Log_PushSend_String(SERI1, "Quit:");
+			//发送退出指令
+			WData_Buffer[SERI1][0] = TERMINALQUIT;
+			SendData(SERI1, WData_Buffer[SERI1], 1);
+
+			//测试结束
+			startFlag = 0x00;
+		}
+		if (V0_flag == 1) {
+			Log_PushSend_String(1, "V0:");
+			if (V0_AD == 0 && V0_control == 0 && V0_high == 0 && V0_low == 0) {
+				//发送测试结果
+				SendResult(V0_CONTROL);
+				//用于标识testingToolWaiting
+				flag = 1;
+				V0_flag = 0;
+				Init_Port();
+			} else if (V0_AD != 0) {
+				IO_Process(V0_CONTROL, AD_STYLE, V0_AD);
+				//				delay_nms(50);
+				SendRequest(V0_CONTROL, AD_STYLE, V0_AD);
+				V0_AD--;
+			} else if (V0_low != 0) {
+				IO_Process(V0_CONTROL, LOW_STYLE, V0_low);
+				SendRequest(V0_CONTROL, LOW_STYLE, V0_low);
+				V0_low--;
+			} else if (V0_control != 0) {
+				//				IO_Process(V0_CONTROL, CONTROL_STYLE, V0_control);
+				SendRequest(V0_CONTROL, CONTROL_STYLE, V0_control);
+				V0_control--;
+			} else if (V0_high != 0) {
+				IO_Process(V0_CONTROL, HIGH_STYLE, V0_high);
+				SendRequest(V0_CONTROL, HIGH_STYLE, V0_high);
+				V0_high--;
+			}
+		} else if (V7_flag == 1) {
+			Log_PushSend_String(1, "V7:");
+			if (V7_high == 0) {
+				//发送测试结果
+				SendResult(V7_CONTROL);
+				//用于标识testingToolWaiting
+				flag = 1;
+				V7_flag = 0;
+				Init_Port();
+			} else if (V7_high != 0) {
+				//先进行IO口的处理
+				IO_Process(V7_CONTROL, HIGH_STYLE, V7_high);
+				//发送请求，在发送请求之前会进行发送状态保存
+				SendRequest(V7_CONTROL, HIGH_STYLE, V7_high);
+				V7_high--;
+			}
+		} else if (V5_flag == 1) {
+			Log_PushSend_String(1, "V5:");
+			if (V5_AD == 0 && V5_control == 0 && V5_high == 0 && V5_low == 0
+					&& V5_pulse == 0) {
+				//发送测试结果
+				SendResult(V5_CONTROL);
+				//用于标识testingToolWaiting
+				flag = 1;
+				V5_flag = 0;
+				Init_Port();
+			} else if (V5_high != 0) {
+				IO_Process(V5_CONTROL, HIGH_STYLE, V5_high);
+				SendRequest(V5_CONTROL, HIGH_STYLE, V5_high);
+				V5_high--;
+			} else if (V5_low != 0) {
+				IO_Process(V5_CONTROL, LOW_STYLE, V5_low);
+				SendRequest(V5_CONTROL, LOW_STYLE, V5_low);
+				V5_low--;
+			} else if (V5_control != 0) {
+				//				IO_Process(V5_CONTROL, CONTROL_STYLE, V5_control);
+				SendRequest(V5_CONTROL, CONTROL_STYLE, V5_control);
+				V5_control--;
+			} else if (V5_pulse != 0) {
+				SendRequest(V5_CONTROL, PULSE_STYLE, V5_pulse);
+				//				delay_nms(300);
+				IO_Process(V5_CONTROL, PULSE_STYLE, V5_pulse);
+				//进入发脉冲的等待中
+				while (count > 1) {
+					//没有加delay似乎不可以，count的值不能及时更新。
+					delay_nms(100);
+					//					Log_SeriPushSend(1,count);
+				}
+				Log_PushSend_String(1, "while");
+				V5_pulse--;
+			} else if (V5_AD != 0) {
+				IO_Process(V5_CONTROL, AD_STYLE, V5_AD);
+				//				delay_nms(50);
+				SendRequest(V5_CONTROL, AD_STYLE, V5_AD);
+				V5_AD--;
+			}
+		}
+		testingToolWaiting = 1;
+		if (flag == 1) {
+			testingToolWaiting = 0;
+			flag = 0;
+		}
+		//延时，以防发送冲突
+		Int_delay_nms(50, null);
+	}
+}
+
+/**
+ * @Title:
+ * @Description: 判断返回的结果是否正确
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-9-7
+ */
+uchar checkReturn(void) {
+	if (sendRequestState[0] == V7_CONTROL) {
+		if (0x02 == RData_Buffer[SERI1][DATABEGIN]) {
+			return 0x01;
+		}
+	} else {
+		if (sendRequestState[1] == HIGH_STYLE) {
+			if (0x01 == RData_Buffer[SERI1][DATABEGIN]) {
+				return 0x01;
+			}
+		} else if (sendRequestState[1] == LOW_STYLE) {
+			if (sendRequestState[0] == RData_Buffer[SERI1][DATABEGIN]) {
+				return 0x01;
+			}
+		}
+	}
+	return 0x00;
+}
+
+/**
+ * @Title:
+ * @Description: 针对每个命令，进行相应的处理。
+ * @Arguments:
+ * @Return:
+ * @author Berton
+ * @date 2009-8-21
+ */
+void SeriRDataProcess(uchar index) {
+	uchar i;
+	uchar length;
+	uchar Rlength;
+	Log_PushSend_String(index, "Seri");
+	switch (RData_Buffer[index][COMMANDINDEX]) {
+	case PCHANDSHAKING:
+		OUTPUT_DEBUG("PCSHake",7);
+
+		Log_PushSend_String(SERI0, "PCShake");
+		PC_HandShakeFlag = 0x01;
+		configFlag = 0x00;
+		//				WData_Buffer[index][0] = 0x00;
+		//				WData_Buffer[index][1] = 0x01;
+		//				SendData(SERI0, WData_Buffer[index], 2);
+		/**
+		 * 设置一个延时等待PC发送一个配置信息。
+		 */
+		break;
+	case PCCONFIGURE:
+		OUTPUT_DEBUG("PCConfig",8);
+
+		Log_PushSend_String(SERI0, "PCconfig");
+		for (i = 0; i < TESTINGCONFIGLENGTH; ++i) {
+			testingConfig[i] = RData_Buffer[index][i + DATABEGIN];
+		}
+		configFlag = 0x01;
+
+		config_high = testingConfig[0];
+		config_low = testingConfig[1];
+		config_control = testingConfig[2];
+		config_AD = testingConfig[3];
+		config_pulse = testingConfig[4];
+		V7_flag = 0x01;
+		V7_high = testingConfig[0];
+		V5_flag = 0x01;
+		V5_high = testingConfig[0];
+		V5_low = testingConfig[1];
+		V5_control = testingConfig[2];
+		V5_AD = testingConfig[3];
+		V5_pulse = testingConfig[4];
+		V0_flag = 0x01;
+		V0_high = testingConfig[0];
+		V0_low = testingConfig[1];
+		V0_control = testingConfig[2];
+		V0_AD = testingConfig[3];
+		//		for (i = 0; i < TESTINGCONFIGLENGTH; ++i) {
+		//			WData_Buffer[index][i]=testingConfig[i];
+		//		}
+		//		SendData(SERI0, WData_Buffer[index], DATABEGIN);
+		break;
+	case TERMINALHANDSHAKING:
+		//
+		OUTPUT_DEBUG("TERMINAL",8);
+
+		Log_PushSend_String(SERI0, "TShake");
+		/**
+		 * Restore the data
+		 */
+		for (i = 0; i < TERMINALIDLENGTH; ++i) {
+			terminalID[i] = RData_Buffer[index][i + DATABEGIN];
+		}
+		for (i = 0; i < TERMINALVERSIONLENGTH; ++i) {
+			terminalVersion[i] = RData_Buffer[index][i + DATABEGIN
+					+ TERMINALIDLENGTH];
+		}
+		/**
+		 * Send the information to PC
+		 */
+		WData_Buffer[SERI0][0] = PCHANDSHAKING;
+
+		//		WData_Buffer[SERI0][0] = 0x11;
+
+		for (i = 0; i < TERMINALIDLENGTH; ++i) {
+			WData_Buffer[SERI0][i + 1] = terminalID[i];
+		}
+		for (i = 0; i < TERMINALVERSIONLENGTH; ++i) {
+			WData_Buffer[SERI0][i + 1 + TERMINALIDLENGTH] = terminalVersion[i];
+		}
+		SendData(SERI0, WData_Buffer[SERI0], 1 + TERMINALIDLENGTH
+				+ TERMINALVERSIONLENGTH);
+
+		//初始化，准备进行测试
+		startFlag = 0x01;
+		config_high = testingConfig[0];
+		config_low = testingConfig[1];
+		config_control = testingConfig[2];
+		config_AD = testingConfig[3];
+		config_pulse = testingConfig[4];
+		V7_flag = 0x01;
+		V7_high = testingConfig[0];
+		V5_flag = 0x01;
+		V5_high = testingConfig[0];
+		V5_low = testingConfig[1];
+		V5_control = testingConfig[2];
+		V5_AD = testingConfig[3];
+		V5_pulse = testingConfig[4];
+		V0_flag = 0x01;
+		V0_high = testingConfig[0];
+		V0_low = testingConfig[1];
+		V0_control = testingConfig[2];
+		V0_AD = testingConfig[3];
+
+		//终端进入测试模式标志位
+		terminalState = 0x01;
+		break;
+	case TERMINALTESTING:
+		OUTPUT_DEBUG("TTest",5);
+
+		Log_PushSend_String(SERI0, "TTest");
+
+		//先记录发送的电压
+		testingResult[TESTINGCONTROL] = sendRequestState[0];
+		if (sendRequestState[1] == HIGH_STYLE) {
+			//			if (checkReturn())
+			//				testingResult[1] |= RData_Buffer[index][DATABEGIN + 1];
+			//将相应的位置一
+			if (checkReturn()) {
+				SBIT(testingResult[1],RData_Buffer[index][DATABEGIN + 1]-1);
+			}
+
+		} else if (sendRequestState[1] == LOW_STYLE) {
+			length = HIGH_RESULT_LENGTH + 1;
+			//			if (checkReturn())
+			//				testingResult[length]
+			//						|= RData_Buffer[index][DATABEGIN + length];
+			//将相应的位置一
+			if (checkReturn()) {
+				SBIT(testingResult[length],RData_Buffer[index][DATABEGIN + length]-1);
+			}
+		} else if (sendRequestState[1] == AD_STYLE) {
+
+			if (sendRequestState[0] == V0_CONTROL) {
+				//立即进行AD输出为低
+				set_Have_Oil();
+			} else if (sendRequestState[0] == V5_CONTROL) {
+				//立即进行AD输出为高，以争取时间
+				set_No_Oil();
+			}
+			length = 1 + HIGH_RESULT_LENGTH + LOW_RESULT_LENGTH
+					+ CONTROL_RESULT_LENGTH + sendRequestState[2] - 1;
+			Rlength = 1 + HIGH_RESULT_LENGTH + LOW_RESULT_LENGTH
+					+ CONTROL_RESULT_LENGTH;
+			testingResult[length] = RData_Buffer[index][DATABEGIN + Rlength];
+		} else if (sendRequestState[1] == PULSE_STYLE) {
+			length = (1 + HIGH_RESULT_LENGTH + LOW_RESULT_LENGTH
+					+ CONTROL_RESULT_LENGTH + AD_RESULT_LENGTH + 2
+					* (sendRequestState[2] - 1));
+			//下面的第二个1是AD显示的长度
+			Rlength = 1 + HIGH_RESULT_LENGTH + LOW_RESULT_LENGTH
+					+ CONTROL_RESULT_LENGTH + 1;
+			testingResult[length] = RData_Buffer[index][DATABEGIN + Rlength];
+			testingResult[length + 1] = RData_Buffer[index][DATABEGIN + Rlength
+					+ 1];
+		} else if (sendRequestState[1] == CONTROL_STYLE) {
+			//延时以给充足的时间读取IO口
+			delay_nms(300);
+			ReadPinState();
+		}
+
+		//已经回复等待
+		testingToolWaiting = 0;
+		break;
+	case TERMINALQUIT:
+
+		//将终端状态标志位置0，表示已经发送退出状态。
+		terminalState = 0x00;
+		//已经回复等待
+		testingToolWaiting = 0;
+	default:
+		break;
+	}
+}
+

@@ -1,0 +1,663 @@
+
+/*
+    This version is compatible PCB Board of VERSION 3 
+*/
+
+
+#include <mega8.h>
+#include <stdio.h>
+#include <delay.h>
+
+#define      LED_ON            PORTD.7 = 1
+#define      LED_OFF           PORTD.7 = 0
+
+#define      BUZZER_ON         PORTC.0 = 1
+#define      BUZZER_OFF        PORTC.0 = 0
+
+#define      LEARN             PIND.0
+
+#define      YES               1
+#define      NO                0
+
+#define      OK                1
+
+#define      BIT0              0
+#define      BIT1              1
+#define      FLOATING          2
+
+
+
+
+
+#define     LED1            PORTD.7
+#define     LED2            PORTD.6
+#define     LED3            PORTD.5
+#define     LED4            PORTD.4
+
+#define     POWER_LED       PORTC.5
+
+
+
+
+
+#define     RELAY_OUT       PORTB.0 
+#define     RELAY_SELECT    PORTB.1
+#define     RELAY_POWER     PORTB.2
+
+#define     M8_TO_STM32     PORTC.4
+
+
+#define     M8_Q0           PORTC.0 
+#define     M8_Q1           PORTC.1
+#define     M8_Q2           PORTC.2  
+#define     M8_Q3           PORTC.3
+
+#define     STM32_Q0        PINC.0 
+#define     STM32_Q1        PINC.1 
+#define     STM32_Q2        PINC.2 
+#define     STM32_Q3        PINC.3 
+
+#define     DELAY           120 
+
+#define     SET_OUTPUT      DDRC = 0x3F 
+#define     SET_INPUT       
+  
+    
+
+short int PowerStatus = 0 , STM32Data, POWER_LED_Cunter, KEY_PRESS = 0;
+
+//char string[20];
+int StartPower = 0;
+
+float T1, T2, DutyCycle;
+
+bit RisingEdge = OK, StartT2 = NO, GetPulse = NO, Sync = NO, AddressReceive = NO;
+
+short int i = 0, j = 0, PulseNumber = 1, Pulse1, Pulse2;
+
+short int  AddressData1[12];
+short int  AddressData2[12];
+short int  AddressData[8];
+eeprom short int  EepromAddressData[8];
+
+short int NumberPacket = 1, Error = NO;
+//short int receive = 0, 
+short int  Data;
+
+void Init(){
+
+
+
+
+PORTB=0x00;
+DDRB=0x07;
+
+
+PORTC=0x00;
+DDRC=0x30;
+
+
+PORTD=0x03;
+DDRD=0xF0;
+
+
+
+// Timer/Counter 1 initialization
+// Clock source: System Clock
+// Clock value: 2000.000 kHz
+// Mode: Normal top=0xFFFF
+// OC1A output: Discon.
+// OC1B output: Discon.
+// Noise Canceler: Off
+// Input Capture on Falling Edge
+// Timer1 Overflow Interrupt: Off
+// Input Capture Interrupt: Off
+// Compare A Match Interrupt: Off
+// Compare B Match Interrupt: Off
+TCCR1A=0x00;
+TCCR1B=0x02;
+TCNT1H=0x00;
+TCNT1L=0x00;
+ICR1H=0x00;
+ICR1L=0x00;
+OCR1AH=0x00;
+OCR1AL=0x00;
+OCR1BH=0x00;
+OCR1BL=0x00;
+
+
+  
+
+// External Interrupt(s) initialization
+// INT0: On
+// INT0 Mode: Rising Edge
+// INT1: On
+// INT1 Mode: Rising Edge
+GICR|=0xC0;
+MCUCR=0x0F;
+GIFR=0xC0;
+
+
+    // Global enable interrupts
+    #asm("sei")
+    
+
+    
+    for(i=0; i<8; i++)
+       AddressData[i]= EepromAddressData[i];
+}
+
+
+
+// External Interrupt 0 service routine
+interrupt [EXT_INT0] void ext_int0_isr(void)
+{
+    if(PowerStatus == 1)
+    {
+        SET_INPUT;
+        delay_ms(2);
+        STM32Data =  (STM32_Q0 == 1) ? 1 : 0;
+		STM32Data += (STM32_Q1 == 1) ? 2 : 0;
+		STM32Data += (STM32_Q2 == 1) ? 4 : 0;
+		STM32Data += (STM32_Q3 == 1) ? 8 : 0; 
+        
+        if(STM32Data == 7)
+        {
+            LED1 = 1;
+            LED2 = 1;
+            LED3 = 1;
+            LED4 = 1; 
+            delay_ms(1000);
+            LED1 = 0;
+            LED2 = 0;
+            LED3 = 0;
+            LED4 = 0;
+        }
+    }
+        
+}
+
+// External Interrupt 1 service routine
+interrupt [EXT_INT1] void ext_int1_isr(void)
+{
+    
+    if(RisingEdge == YES)   //Rising Edge
+    {  
+     
+        if(StartT2 == YES)
+        {
+            T2 = TCNT1;
+            StartT2 = NO;
+            GetPulse = OK;
+        }
+        TCNT1 = 0;
+        //MCUCR=0x08;     //INT1 Mode : Falling Edge
+        RisingEdge = NO; 
+        
+        // External Interrupt(s) initialization
+        // INT0: On
+        // INT0 Mode: Rising Edge
+        // INT1: On
+        // INT1 Mode: Falling Edge
+        
+        MCUCR=0x0B;
+        
+    }
+    else    // Falling Edge
+    {  
+        T1 = TCNT1;
+        TCNT1 = 0;
+
+        // External Interrupt(s) initialization
+        // INT0: On
+        // INT0 Mode: Rising Edge
+        // INT1: On
+        // INT1 Mode: Rising Edge
+        
+        MCUCR=0x0F;
+        
+        
+        RisingEdge = OK;
+        StartT2 = OK;
+    }
+
+    if( GetPulse == OK) {
+         
+        if(Sync == NO)
+        {  
+            DutyCycle = (T1 / (T1 + T2));
+            if(DutyCycle > 0.015 && DutyCycle < 0.035) //Normal 0.0333
+            {   
+                Sync = OK;
+                AddressReceive = YES; 
+                Error = NO;
+                PulseNumber = 1;
+                i = 0;
+                j = 0;
+            }
+        }
+        else if(AddressReceive == YES)
+        {
+            DutyCycle = (T1 / (T1 + T2));
+
+            if(i != 16)
+            {
+                if(DutyCycle > 0.15 && DutyCycle < 0.3) //4a  Normal 0.239
+                {
+                    if(PulseNumber == 1)
+                        Pulse1 = 4;
+                    else if(PulseNumber == 2)
+                        Pulse2 = 4; 
+                }
+                else if(DutyCycle > 0.5 && DutyCycle < 0.8) //12a  Normal 0.729
+                {
+                    if(PulseNumber == 1)
+                        Pulse1 = 12;
+                    else if(PulseNumber == 2)
+                        Pulse2 = 12; 
+                }
+                else
+                {
+                    for(i=0; i<12; i++)
+                    {
+                        AddressData1[i] = 0;
+                        AddressData2[i] = 0;                        
+                    }
+                        
+                    NumberPacket = 1; 
+                    Error = NO;   
+                    AddressReceive = NO;
+                    PulseNumber = 1;
+                    Sync = NO;
+                    i = 0;
+                    j = 0;
+                    TCNT1 = 0; 
+                    RisingEdge = OK;
+                    // External Interrupt(s) initialization
+                    // INT0: On
+                    // INT0 Mode: Rising Edge
+                    // INT1: On
+                    // INT1 Mode: Falling Edge
+                    
+                    MCUCR=0x0B;
+                  
+                    
+                    StartT2 = NO;
+                    GetPulse = NO;
+                    goto EndInterrupt;
+                }
+
+                if(PulseNumber == 2)
+                {
+                    if( Pulse1 == 4 && Pulse2 == 4)
+                    {
+                        if(NumberPacket == 1)
+                            AddressData1[j] = BIT0 ; 
+                        else if(NumberPacket == 2)
+                            AddressData2[j] = BIT0 ;
+                    }    
+                    else if(Pulse1 == 12 && Pulse2 == 4)
+                    {
+                        if(NumberPacket == 1)
+                            AddressData1[j] = BIT1 ; 
+                        else if(NumberPacket == 2)
+                            AddressData2[j] = BIT1 ;
+                    }                        
+                    else if(Pulse1 == 4 && Pulse2 == 12)
+                    {  
+                        if(NumberPacket == 1)
+                            AddressData1[j] = FLOATING ; 
+                        else if(NumberPacket == 2)
+                            AddressData2[j] = FLOATING ;
+                    }
+                    j++;
+                }
+                                                               
+                
+                if(PulseNumber == 1) 
+                    PulseNumber = 2;
+                else if(PulseNumber == 2)
+                    PulseNumber = 1;
+            }
+
+            i++;
+            
+            if(i > 23)
+            {
+                
+                if(NumberPacket == 2)
+                {   
+                    for(i=0; i<12; i++)
+                        if(AddressData1[i] != AddressData2[i])
+                            Error = YES;
+                    
+                    if(Error == NO)
+                    {   
+                        if(!LEARN)
+                        {
+                            for(i=0; i<4; i++)
+                            {   
+                                LED1 = 1;
+                                LED2 = 1;
+                                LED3 = 1;
+                                LED4 = 1;
+                                delay_ms(100);
+                                LED1 = 0;
+                                LED2 = 0;
+                                LED3 = 0;
+                                LED4 = 0;  
+                                delay_ms(100);
+                                //BUZZER_ON;
+                                //delay_ms(50);
+                                //BUZZER_OFF;
+                                //delay_ms(50);  
+                            }
+                            
+                            for(i=0; i<8; i++)
+                            {
+                                EepromAddressData[i] = AddressData1[i]; 
+                                AddressData[i] = AddressData2[i]; 
+                                //lcd_clear();
+                                //sprintf(string, "%0d %0d %0d %0d %0d %0d %0d %0d", AddressData[0] , AddressData[1], AddressData[2], AddressData[3], AddressData[4], AddressData[5], AddressData[6], AddressData[7]);
+                                //lcd_gotoxy(0, 0);
+                                //lcd_puts(string);
+                            }    
+                        }
+                        else
+                        {  
+                            Error = NO;
+                            
+                            for(i=0; i<8; i++)
+                            {
+                                if(AddressData[i] != AddressData2[i])
+                                {
+                                    Error = YES;  
+                                    
+                                    //lcd_clear();   
+                                    //sprintf(string, "%0d %0d %0d %0d %0d %0d %0d %0d", AddressData2[0] , AddressData2[1], AddressData2[2], AddressData2[3], AddressData2[4], AddressData2[5], AddressData2[6], AddressData2[7]);
+                                    //lcd_gotoxy(0, 0);
+                                    //lcd_puts(string);
+                                    //sprintf(string, "NO MATCH ADDRESS");
+                                    //lcd_gotoxy(0, 1);
+                                    //lcd_puts(string);  
+
+                                    LED1 = 1;
+                                    LED2 = 1;
+                                    LED3 = 1;
+                                    LED4 = 1;
+                                    delay_ms(200);
+                                    LED1 = 0;
+                                    LED2 = 0;
+                                    LED3 = 0;
+                                    LED4 = 0;
+
+                                } 
+                            }
+                                    
+                            if(Error == NO)
+                            {
+                                
+                                //lcd_clear();
+                                //sprintf(string, "%0d %0d %0d %0d %0d %0d %0d %0d", AddressData1[0] , AddressData1[1], AddressData1[2], AddressData1[3], AddressData1[4], AddressData1[5], AddressData1[6], AddressData1[7]);
+                                //lcd_gotoxy(0, 0);
+                                //lcd_puts(string);
+
+                                Data = ((AddressData1[8]*1000) + (AddressData1[9]*100) + (AddressData1[10]*10) + AddressData1[11]);
+                                LED1 = 0;
+                                LED2 = 0;
+                                LED3 = 0;
+                                LED4 = 0;
+                                switch(Data){
+                                    case 20:      //0001 
+                                        Data = 1;
+                                        LED4 = 1; 
+                                        break; 
+                                    case 210:     //0010   
+                                        Data = 2;
+                                        LED3 = 1; 
+                                        break;
+                                    case 200:     //0011 
+                                        Data = 3;
+                                        LED3 = 1;  
+                                        LED4 = 1;
+                                        break; 
+                                    case 2100:    //0100 
+                                        Data = 4;
+                                        LED2 = 1;  
+                                        break; 
+                                    case 2120:    //0101    
+                                        LED2 = 1;
+                                        LED4 = 1;
+                                        Data = 5;
+                                        break;
+                                    case 2010:    //0110 
+                                        LED2 = 1;
+                                        LED3 = 1;
+                                        Data = 6;
+                                        break;
+                                    case 2000:   //0111  
+                                        LED2 = 1;
+                                        LED3 = 1;
+                                        LED4 = 1;
+                                        Data = 7;
+                                        break; 
+                                    case 1000:   //1000
+                                        LED1 = 1;
+                                        Data = 8;
+                                        break;
+                                    case 1020:   //1001
+                                        LED1 = 1;
+                                        LED4 = 1;
+                                        Data = 9;
+                                        break; 
+                                    case 1210:   //1010  
+                                        LED1 = 1;
+                                        LED3 = 1;
+                                        Data = 10; 
+                                        break; 
+                                    case 1200: //1011
+                                        LED1 = 1;
+                                        LED3 = 1;
+                                        LED4 = 1;
+                                        Data = 11;
+                                        break;
+                                    case 100: // 1100
+                                        LED1 = 1;
+                                        LED2 = 1;
+                                        Data = 12;
+                                        break;
+                                }
+                                
+                                SET_OUTPUT;
+                                M8_Q0 = LED4; 
+                                M8_Q1 = LED3;
+                                M8_Q2 = LED2;
+                                M8_Q3 = LED1; 
+                                
+                                delay_ms(2);
+                                
+                                M8_TO_STM32 = 1;
+                                delay_ms(8);
+                                M8_TO_STM32 = 0; 
+                                delay_ms(8);
+                                M8_Q0 = 0;
+                                M8_Q1 = 0;
+                                M8_Q2 = 0;
+                                M8_Q3 = 0;
+                                SET_INPUT;
+                                
+                                //sprintf(string, "%0d", Data);
+                                //lcd_gotoxy(0, 1);
+                                //lcd_puts(string);
+                                //receive = 1; 
+                            }
+                        }
+                        
+                    }  
+                    for(i=0; i<12; i++)
+                    {
+                        AddressData1[i] = 0; 
+                        AddressData2[i] = 0;
+                    }
+                    NumberPacket = 1;     
+                } 
+                else
+                { 
+                    NumberPacket = 2;
+                }
+                
+                Error = NO;
+                AddressReceive = NO;
+                PulseNumber = 1;
+                Sync = NO;
+                i = 0;
+                j = 0;
+                TCNT1 = 0;
+                RisingEdge = OK;
+
+                // External Interrupt(s) initialization
+                // INT0: On
+                // INT0 Mode: Rising Edge
+                // INT1: On
+                // INT1 Mode: Falling Edge
+               
+                MCUCR=0x0B;
+                
+                    
+                RisingEdge = OK;
+                StartT2 = NO;
+                GetPulse = NO;
+                goto EndInterrupt;
+            }
+        }
+
+        GetPulse = NO;
+    }
+    EndInterrupt: 
+ 
+    //Add to version 2     
+    POWER_LED_Cunter++;
+    if(POWER_LED_Cunter > 5000 && PowerStatus == 1)
+    {
+        POWER_LED = 1 ;
+    }
+    if(POWER_LED_Cunter > 5500 && PowerStatus == 1)
+    {
+        POWER_LED = 0 ;
+        POWER_LED_Cunter = 0; 
+    } 
+}
+//-----------------------------------------------------------------------------------
+
+
+
+void main(void)
+{
+    POWER_LED = 0;
+    Init();
+
+      while (1)
+      {
+           /* 
+            if(!LEARN){
+                M8_TO_STM32 = 1;
+                delay_ms(250);
+                M8_TO_STM32 = 0;
+            }
+           */
+            if(StartPower == 0)
+            {   
+                POWER_LED = 0;
+                delay_ms(4000); 
+                LED1 = 1;
+                delay_ms(DELAY);                
+                LED1 = 0; 
+                LED2 = 1;
+                delay_ms(DELAY);                 
+                LED2 = 0; 
+                LED3 = 1;
+                delay_ms(DELAY);                  
+                LED3 = 0; 
+                LED4 = 1;
+                delay_ms(DELAY);   
+                LED4 = 0; 
+                
+                
+                //RELAY_OUT = 1;
+                RELAY_POWER = 1;
+                
+                PowerStatus = 1;
+                delay_ms(20);
+                
+                StartPower = 1;
+            }
+             
+            
+            if(PIND.1 == 1) 
+                KEY_PRESS = 0;
+                
+            if(PIND.1 == 0 && PowerStatus == 0 && KEY_PRESS == 0)
+            {  
+                KEY_PRESS = 1;
+                
+                LED1 = 1;
+                delay_ms(DELAY);                
+                LED1 = 0; 
+                LED2 = 1;
+                delay_ms(DELAY);                 
+                LED2 = 0; 
+                LED3 = 1;
+                delay_ms(DELAY);                  
+                LED3 = 0; 
+                LED4 = 1;
+                delay_ms(DELAY);   
+                LED4 = 0; 
+                POWER_LED = 0;
+                
+                //RELAY_OUT = 1;
+                RELAY_POWER = 1;
+                
+                PowerStatus = 1;
+                delay_ms(20);
+            }
+            else if(PIND.1 == 0 && PowerStatus == 1 && KEY_PRESS == 0) //if Device On
+            {    
+                KEY_PRESS = 1;
+                
+                PowerStatus = 0;
+                POWER_LED = 0;    
+                LED4 = 1;
+                delay_ms(DELAY);                
+                LED4 = 0; 
+                LED3 = 1;
+                delay_ms(DELAY);                 
+                LED3 = 0; 
+                LED2 = 1;
+                delay_ms(DELAY);                  
+                LED2 = 0; 
+                LED1 = 1;
+                delay_ms(DELAY);   
+                LED1 = 0; 
+                
+                //RELAY_OUT = 0;
+                RELAY_POWER = 0; 
+                                
+                delay_ms(20);
+            } 
+            
+            
+ }                 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

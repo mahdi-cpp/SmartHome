@@ -1,0 +1,36 @@
+RAM Allocation
+Variable                                                          Address   Size
+--------------------------------------------------------------------------------
+T1                                                                0x0160       4
+T2                                                                0x0164       4
+DutyCycle                                                         0x0168       4
+i                                                                 0x016C       2
+j                                                                 0x016E       2
+PulseNumber                                                       0x0170       2
+Pulse1                                                            0x0172       2
+Pulse2                                                            0x0174       2
+AddressData1                                                      0x0176      24
+AddressData2                                                      0x018E      24
+AddressData                                                       0x01A6      16
+NumberPacket                                                      0x01B6       2
+Error                                                             0x01B8       2
+Data                                                              0x01BA       2
+
+EEPROM Allocation
+Variable                                                          Address   Size
+--------------------------------------------------------------------------------
+EepromAddressData                                                 0x0000      16
+
+Register Allocation
+Variable                                                          Register  Size
+--------------------------------------------------------------------------------
+PowerStatus                                                       R4,R5        2
+STM32Data                                                         R6,R7        2
+POWER_LED_Cunter                                                  R8,R9        2
+KEY_PRESS                                                         R10,R11      2
+StartPower                                                        R12,R13      2
+RisingEdge                                                        R2.0      1bit
+StartT2                                                           R2.1      1bit
+GetPulse                                                          R2.2      1bit
+Sync                                                              R2.3      1bit
+AddressReceive                                                    R2.4      1bit

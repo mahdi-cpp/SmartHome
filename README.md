@@ -1,14 +1,17 @@
 
-# SmartHome
+## SmartHome
+
+* STM32F103RBT6
+* ATmega8A-AU
+* SIM900
+* MT8888CS
+* VS1003
+* MAX232DR
+* ULN2003L
 
 
-## Cross-Compile QT 5.14.2 For Raspberry Pi 4
-* Raspberry Pi OS (32-bit) Lite
-* Minimal image based on Debian Buster
-* Version:May 2020
-* Release date:2020-05-27
-* Kernel version:4.19
-* Size:432 MB
+
+
 
 <!-- PROJECT LOGO -->
 <br />
@@ -33,3 +36,30 @@
     <a href="https://github.com/othneildrew/Best-README-Template/issues">Request Feature</a>
   </p>
 </div>
+
+
+
+## Main Featurs
+
+[Version 3](https://github.com/SpacehuhnTech/esp8266_deauther/tree/v3) is in development. It is stable to use, but it is very different.  
+It is command line based, which allows it to offer not just more features, but make them more customizable.  
+
+| Feature | Version 2 | Version 3 |
+| ------- | --------- | --------- |
+| Web Interface | ✅ | |
+| Display support | ✅ | |
+| Serial Command Line | ✅ | ✅ |
+| Scanner | ✅ | ✅ |
+| Deauth attack | ✅ | ✅ |
+| Beacon attack | ✅ | ✅ |
+| Probe attack | ✅ | ✅ |
+| [Huhnitor](https://github.com/spacehuhntech/huhnitor) support | | ✅ |
+| Signal strength scanner | | ✅ |
+| Authentication scanner | | ✅ |
+| Rogue AP | | ✅ |
+
+
+
+## License 
+
+This software is licensed under the MIT License. See the [license file](LICENSE) for details.  

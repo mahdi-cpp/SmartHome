@@ -76,27 +76,6 @@ It is command line based, which allows it to offer not just more features, but m
 
 
 
-## Main Featurs
-
-[Version 3](https://github.com/SpacehuhnTech/esp8266_deauther/tree/v3) is in development. It is stable to use, but it is very different.  
-It is command line based, which allows it to offer not just more features, but make them more customizable.  
-
-| Feature | Version 2 | Version 3 |
-| ------- | --------- | --------- |
-| Web Interface | ✅ | |
-| Display support | ✅ | |
-| Serial Command Line | ✅ | ✅ |
-| Scanner | ✅ | ✅ |
-| Deauth attack | ✅ | ✅ |
-| Beacon attack | ✅ | ✅ |
-| Probe attack | ✅ | ✅ |
-| [Huhnitor](https://github.com/spacehuhntech/huhnitor) support | | ✅ |
-| Signal strength scanner | | ✅ |
-| Authentication scanner | | ✅ |
-| Rogue AP | | ✅ |
-
-
-
 ## License 
 
 This software is licensed under the MIT License. See the [license file](LICENSE) for details.  

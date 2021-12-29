@@ -39,27 +39,6 @@ offering low power consumption and high reliability.
 * PT2264 is a remote control encoder utilizing CMOS. Technology. It encodes data and address pins into a serial coded waveform suitable for RF modulation.
 
 
-## Main Featurs
-
-[Version 3](https://github.com/SpacehuhnTech/esp8266_deauther/tree/v3) is in development. It is stable to use, but it is very different.  
-It is command line based, which allows it to offer not just more features, but make them more customizable.  
-
-| Feature | Version 2 | Version 3 |
-| ------- | --------- | --------- |
-| STM32F103RBT6 | ✅ | |
-| ATmega8A-AU | ✅ | |
-| SIM900 | ✅ | ✅ |
-| Scanner | ✅ | ✅ |
-| Deauth attack | ✅ | ✅ |
-| Beacon attack | ✅ | ✅ |
-| Probe attack | ✅ | ✅ |
-| [Huhnitor](https://github.com/spacehuhntech/huhnitor) support | | ✅ |
-| Signal strength scanner | | ✅ |
-| Authentication scanner | | ✅ |
-| Rogue AP | | ✅ |
-
-
-
 
 
 <!-- PROJECT LOGO -->
@@ -73,7 +52,6 @@ It is command line based, which allows it to offer not just more features, but m
   <h3 align="center">Best-README-Template</h3>
 
 </div>
-
 
 
 ## License 

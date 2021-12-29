@@ -49,7 +49,12 @@ offering low power consumption and high reliability.
 </div>
 <div align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="./images/2.jpg"  >
+    <img src="./images/1.jpg" style="width:960px;height:1280px;" >
+  </a>
+</div>
+<div align="center">
+  <a href="https://github.com/othneildrew/Best-README-Template">
+    <img src="./images/2.jpg" style="width:960px;height:1280px;" >
   </a>
 </div>
 

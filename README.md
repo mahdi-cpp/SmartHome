@@ -45,12 +45,10 @@ offering low power consumption and high reliability.
 <br />
 <div align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="./images/pcb.png"  width="1077" height="695">
+    <img src="./images/pcb.png"  >
   </a>
 
   <h3 align="center">  </h3>
-  <h3 align="center">Best-README-Template</h3>
-
 </div>
 
 

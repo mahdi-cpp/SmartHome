@@ -23,30 +23,28 @@ By executing powerful instructions in a single clock cycle, the ATmega8 achieves
 approaching 1 MIPS per MHz, allowing the system designer to optimize power consumption ver-
 sus processing speed.
 
-* PT2264  is a remote control encoder utilizing CMOS. Technology. It encodes data and address pins into a serial coded waveform suitable for RF modulation.
+- Connect to PT2264 remote control encoder and receive commands
 
 ## SIM900
-* #### Send SMS 
-   - Send Notification to users
-   - Send alarm security
-   - Send alarm 
- 
-* #### Receive SMS
-   - Receive Command of user
+SIMCom presents an ultra compact and reliable wireless module-SIM900. This is a complete Quad-band GSM/GPRS module in a SMT type and designed with a very powerful single-chip processor integrating AMR926EJ-S core, allowing you to benefit from small dimensions and cost-effective solutions.
+
+- Send sms notifications to users
+- Send sms alarm security to users
+- Receive Command of user
 
 ## MT8888CS
 Integrated DTMF Transceiver with Intel Micro Interface 
 
-* Call users and play alarm security sounds
-* Receive user commands
+- Call users and play alarm security sounds
+- Receive user commands
 
 ## VS1003
-* MP3/WMA AUDIO CODEC: Ring to phone and play mp3 file for user, for example ring and play security sound
+- MP3/WMA AUDIO CODEC: Ring to phone and play mp3 file for user, for example ring and play security sound
 
 ## MAX232DR
-* Conectin Between STM32F103 <---> PLC
-* Conectin Between STM32F103 <---> SIM900
-* Conectin Between STM32F103 <---> Debuger
+- Conectin Between STM32F103 <---> PLC
+- Conectin Between STM32F103 <---> SIM900
+- Conectin Between STM32F103 <---> Debuger
 
 ## PT2264
 PT2264 is a remote control encoder paired with PT2294 utilizing CMOS Technology. It encodes data
@@ -54,9 +52,7 @@ and address pins into a serial coded waveform suitable for RF modulation. PT2264
 12-bit of tri-state address pins providing up to 531,441 (or 312) address codes; thereby, drastically
 reducing any code collision and unauthorized code scanning possibilities. 
 
-
-* 12 Chanel input remote control. for example of usage: lighting control, open door, music ...
-
+- 12 Chanel input remote control. for example of usage: lighting control, open door, music ...
 
 <div align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">

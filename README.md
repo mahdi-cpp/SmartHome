@@ -3,16 +3,27 @@
 This Project is designed in 2014 and assembled on more than 150 home in iran
 
 ## STM32F103RBT6
-* Main Processor
-* Debugger Serial Port
+The STM32F103xx medium-density performance line family incorporates the high-
+performance ARM ® Cortex ® -M3 32-bit RISC core operating at a 72 MHz frequency, high-
+speed embedded memories (Flash memory up to 128 Kbytes and SRAM up to 20 Kbytes),
+and an extensive range of enhanced I/Os and peripherals connected to two APB buses. All
+devices offer two 12-bit ADCs, three general purpose 16-bit timers plus one PWM timer, as
+well as standard and advanced communication interfaces: up to two I 2 Cs and SPIs, three
+USARTs, an USB and a CAN.
+
 * PLC (Programmable logic controller) Serial Port Connection
 * FAT File System read sound voices 
 * Connect To MT8888C Process 
-* 
+* Connect to VS1003 Via SPI Protocol for Play Voices
+* Debugger Serial Port
 
 ## ATmega8A-AU
-* #### Handel PT2264 
-   - PT2264  is a remote control encoder utilizing CMOS. Technology. It encodes data and address pins into a serial coded waveform suitable for RF modulation.
+The ATmega8 is a low-power CMOS 8-bit microcontroller based on the AVR RISC architecture.
+By executing powerful instructions in a single clock cycle, the ATmega8 achieves throughputs
+approaching 1 MIPS per MHz, allowing the system designer to optimize power consumption ver-
+sus processing speed.
+
+* PT2264  is a remote control encoder utilizing CMOS. Technology. It encodes data and address pins into a serial coded waveform suitable for RF modulation.
 
 ## SIM900
 * #### Send SMS 

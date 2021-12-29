@@ -1,5 +1,6 @@
 
-## SmartHome
+## Smart Home Automation Project
+This Project is designed in 2014 and assembled on more than 150 home in iran
 
 ## STM32F103RBT6
 * Main Processor
@@ -26,6 +27,10 @@
 * The MT8888C is a monolithic DTMF transceiver with
 call progress filter. It is fabricated in CMOS technology
 offering low power consumption and high reliability. 
+* #### Call User 
+   - Send Notification to users
+   - Send alarm security
+   - Send alarm 
 
 ## VS1003
 * MP3/WMA AUDIO CODEC: Ring to phone and play mp3 file for user, for example ring and play security sound

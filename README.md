@@ -7,9 +7,7 @@ The STM32F103xx medium-density performance line family incorporates the high-
 performance ARM ® Cortex ® -M3 32-bit RISC core operating at a 72 MHz frequency, high-
 speed embedded memories (Flash memory up to 128 Kbytes and SRAM up to 20 Kbytes),
 and an extensive range of enhanced I/Os and peripherals connected to two APB buses. All
-devices offer two 12-bit ADCs, three general purpose 16-bit timers plus one PWM timer, as
-well as standard and advanced communication interfaces: up to two I 2 Cs and SPIs, three
-USARTs, an USB and a CAN.
+devices offer two 12-bit ADCs, as well as standard and advanced communication interfaces: up to two I 2 Cs and SPIs, three USARTs, an USB and a CAN.
 
 * PLC (Programmable logic controller) Serial Port Connection
 * FAT File System read sound voices 
@@ -75,7 +73,3 @@ reducing any code collision and unauthorized code scanning possibilities.
     <img src="./images/2.jpg" style="width:960px;height:1280px;" >
   </a>
 </div>
-
-## License 
-
-This software is licensed under the MIT License. See the [license file](LICENSE) for details.  

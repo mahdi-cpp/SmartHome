@@ -20,17 +20,14 @@ This Project is designed in 2014 and assembled on more than 150 home in iran
    - Send alarm security
    - Send alarm 
  
-* #### Recieve SMS
+* #### Receive SMS
    - Receive Command of user
 
 ## MT8888CS
-* The MT8888C is a monolithic DTMF transceiver with
-call progress filter. It is fabricated in CMOS technology
-offering low power consumption and high reliability. 
-* #### Call User 
-   - Send Notification to users
-   - Send alarm security
-   - Send alarm 
+Integrated DTMF Transceiver with Intel Micro Interface 
+
+* Call users and play alarm security sounds
+* Receive user commands
 
 ## VS1003
 * MP3/WMA AUDIO CODEC: Ring to phone and play mp3 file for user, for example ring and play security sound

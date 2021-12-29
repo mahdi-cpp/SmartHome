@@ -41,16 +41,17 @@ offering low power consumption and high reliability.
 
 
 
-<!-- PROJECT LOGO -->
-<br />
+
 <div align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
     <img src="./images/pcb.png"  >
   </a>
-
-  <h3 align="center">  </h3>
 </div>
-
+<div align="center">
+  <a href="https://github.com/othneildrew/Best-README-Template">
+    <img src="./images/2.jpg"  >
+  </a>
+</div>
 
 ## License 
 

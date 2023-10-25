@@ -1,6 +1,6 @@
 
 ## Smart Home Automation Project
-This Project is designed in 2014 and assembled on more than 150 home in iran
+This Project is designed in 2014 and assembled on more than 200 home in iran
 
 ## STM32F103RBT6
 The STM32F103xx medium-density performance line family incorporates the high-
